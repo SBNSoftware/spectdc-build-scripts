@@ -1,0 +1,464 @@
+diff --git a/fmc-bus/kernel/fmc-core.c b/fmc-bus/kernel/fmc-core.c
+index 5c24971..0a09e33 100644
+--- a/fmc-bus/kernel/fmc-core.c
++++ b/fmc-bus/kernel/fmc-core.c
+@@ -31,7 +31,7 @@ static int fmc_check_version(unsigned long version, const char *name)
+ 	return 0;
+ }
+ 
+-static int fmc_uevent(struct device *dev, struct kobj_uevent_env *env)
++static int fmc_uevent(const struct device *dev, struct kobj_uevent_env *env)
+ {
+ 	/* struct fmc_device *fdev = to_fmc_device(dev); */
+ 
+@@ -48,12 +48,12 @@ static int fmc_probe(struct device *dev)
+ 	return fdrv->probe(fdev);
+ }
+ 
+-static int fmc_remove(struct device *dev)
++static void fmc_remove(struct device *dev)
+ {
+ 	struct fmc_driver *fdrv = to_fmc_driver(dev->driver);
+ 	struct fmc_device *fdev = to_fmc_device(dev);
+ 
+-	return fdrv->remove(fdev);
++	fdrv->remove(fdev);
+ }
+ 
+ static void fmc_shutdown(struct device *dev)
+diff --git a/fmc-bus/kernel/fmc-fakedev.c b/fmc-bus/kernel/fmc-fakedev.c
+index ac27345..42f0190 100644
+--- a/fmc-bus/kernel/fmc-fakedev.c
++++ b/fmc-bus/kernel/fmc-fakedev.c
+@@ -141,7 +141,7 @@ static void ff_work_fn(struct work_struct *work)
+ 
+ 	ff = ff_dev_create();
+ 	if (IS_ERR(ff)) {
+-		pr_warning("%s: can't re-create FMC devices\n", __func__);
++		pr_warn("%s: can't re-create FMC devices\n", __func__);
+ 		return;
+ 	}
+ 	ret = fmc_device_register_n(ff->fmc, ff_nr_dev);
+diff --git a/zio/buffers/zio-buf-vmalloc.c b/zio/buffers/zio-buf-vmalloc.c
+index 80aeadc..6100102 100644
+--- a/zio/buffers/zio-buf-vmalloc.c
++++ b/zio/buffers/zio-buf-vmalloc.c
+@@ -448,9 +448,9 @@ static void zbk_close(struct vm_area_struct *vma)
+ 
+ 	atomic_dec(&zbki->map_count);
+ }
+-static int zbk_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
++static vm_fault_t zbk_fault(struct vm_fault *vmf)
+ {
+-	struct file *f = vma->vm_file;
++	struct file *f = vmf->vma->vm_file;
+ 	struct zio_f_priv *priv = f->private_data;
+ 	struct zio_bi *bi = priv->chan->bi;
+ 	struct zbk_instance *zbki = to_zbki(bi);
+diff --git a/zio/bus.c b/zio/bus.c
+index 79a3977..08f09bb 100644
+--- a/zio/bus.c
++++ b/zio/bus.c
+@@ -55,7 +55,7 @@ out:
+  * zio_show_version
+  * It shows the current version of ZIO
+  */
+-static ssize_t zio_show_version(struct bus_type *bus, char *buf)
++static ssize_t zio_show_version(const struct bus_type *bus, char *buf)
+ {
+ 	return sprintf(buf, "%d.%d-%d\n", zio_version_major(zio_version),
+ 		       zio_version_minor(zio_version),
+@@ -66,7 +66,7 @@ static ssize_t zio_show_version(struct bus_type *bus, char *buf)
+  * zio_show_buffers
+  * It shows all buffers available
+  */
+-static ssize_t zio_show_buffers(struct bus_type *bus, char *buf)
++static ssize_t zio_show_buffers(const struct bus_type *bus, char *buf)
+ {
+ 	struct zio_object_list_item *cur;
+ 	ssize_t len = 0;
+@@ -83,7 +83,7 @@ static ssize_t zio_show_buffers(struct bus_type *bus, char *buf)
+  * zio_show_triggers
+  * It shows all triggers available
+  */
+-static ssize_t zio_show_triggers(struct bus_type *bus, char *buf)
++static ssize_t zio_show_triggers(const struct bus_type *bus, char *buf)
+ {
+ 	struct zio_object_list_item *cur;
+ 	ssize_t len = 0;
+diff --git a/zio/chardev.c b/zio/chardev.c
+index b000f6d..1be99ac 100644
+--- a/zio/chardev.c
++++ b/zio/chardev.c
+@@ -24,7 +24,7 @@
+ static DEFINE_MUTEX(zmutex);
+ static struct zio_status *zstat = &zio_global_status; /* Always use ptr */
+ 
+-static int zio_dev_uevent(struct device *dev, struct kobj_uevent_env *env)
++static int zio_dev_uevent(const struct device *dev, struct kobj_uevent_env *env)
+ {
+ 	unsigned long *flags;
+ 
+@@ -34,11 +34,7 @@ static int zio_dev_uevent(struct device *dev, struct kobj_uevent_env *env)
+ 	return 0;
+ }
+ 
+-#if LINUX_VERSION_CODE > KERNEL_VERSION(3,2,0)
+-static char *zio_devnode(struct device *dev, umode_t *mode)
+-#else
+-static char *zio_devnode(struct device *dev, mode_t *mode)
+-#endif
++static char *zio_devnode(const struct device *dev, umode_t *mode)
+ {
+ 	return kasprintf(GFP_KERNEL, "zio/%s", dev_name(dev));
+ }
+@@ -50,7 +46,6 @@ static char *zio_devnode(struct device *dev, mode_t *mode)
+  */
+ static struct class zio_cdev_class = {
+ 	.name		= "zio-cdev",
+-	.owner		= THIS_MODULE,
+ 	.dev_uevent	= zio_dev_uevent,
+ 	.devnode	= zio_devnode,
+ };
+diff --git a/zio/core.c b/zio/core.c
+index 12fead7..24ec53d 100644
+--- a/zio/core.c
++++ b/zio/core.c
+@@ -140,12 +140,12 @@ static int __init zio_init(void)
+ 
+ 	err = zio_default_buffer_init();
+ 	if (err)
+-		pr_warning("%s: cannot register default buffer\n", __func__);
++		pr_warn("%s: cannot register default buffer\n", __func__);
+ 	err = zio_default_trigger_init();
+ 	if (err)
+-		pr_warning("%s: cannot register default trigger\n", __func__);
++		pr_warn("%s: cannot register default trigger\n", __func__);
+ 	if (zio_sniffdev_init())
+-		pr_warning("%s: cannot initialize /dev/zio-sniff.ctrl\n",
++		pr_warn("%s: cannot initialize /dev/zio-sniff.ctrl\n",
+ 			   __func__);
+ 
+ 	pr_info("zio-core had been loaded\n");
+diff --git a/zio/drivers/zio-ad788x.c b/zio/drivers/zio-ad788x.c
+index cea3d96..9d091ba 100644
+--- a/zio/drivers/zio-ad788x.c
++++ b/zio/drivers/zio-ad788x.c
+@@ -217,7 +217,7 @@ static int ad788x_input_cset(struct zio_cset *cset)
+ 	spi_message_add_tail(&context->transfer, &context->message);
+ 
+ 	/* start acquisition */
+-	err = spi_async_locked(ad788x->spi, &context->message);
++	err = spi_async(ad788x->spi, &context->message);
+ 	if (!err)
+ 		return -EAGAIN;
+ 
+diff --git a/zio/drivers/zio-fake-dtc.c b/zio/drivers/zio-fake-dtc.c
+index 459963b..91d1e3b 100644
+--- a/zio/drivers/zio-fake-dtc.c
++++ b/zio/drivers/zio-fake-dtc.c
+@@ -20,16 +20,16 @@
+ static struct {
+ 	struct hrtimer timer;
+ 	struct zio_cset *cset;
+-	struct timespec ts;
++	struct timespec64 ts;
+ } zdtc;
+ 
+ #define ZDTC_SLACK 1000 /* 1us */
+ 
+ static enum hrtimer_restart zdtc_fn(struct hrtimer *timer)
+ {
+-	struct timespec ts;
++	struct timespec64 ts;
+ 
+-	getnstimeofday(&ts);
++	ktime_get_real_ts64(&ts);
+ 	dev_dbg(&zdtc.cset->head.dev, "%s: %9li.%09li\n", __func__,
+ 		ts.tv_sec, ts.tv_nsec);
+ 	zio_trigger_data_done(zdtc.cset);
+@@ -51,7 +51,7 @@ static void zdtc_stop_io(struct zio_cset *cset)
+ /* raw_io method: arm the timer with the currently requested time */
+ static int zdtc_raw_io(struct zio_cset *cset)
+ {
+-	struct timespec ts;
++	struct timespec64 ts;
+ 	struct zio_control *ctrl;
+ 	ktime_t ktime;
+ 
+@@ -62,13 +62,13 @@ static int zdtc_raw_io(struct zio_cset *cset)
+ 	zdtc.cset = cset;
+ 
+ 	/* If sec is less than one hour, it is relative to the current sec. */
+-	getnstimeofday(&ts);
++	ktime_get_real_ts64(&ts);
+ 	ts.tv_nsec = ctrl->tstamp.ticks;
+ 	if (ctrl->tstamp.secs > 3600)
+ 		ts.tv_sec = ctrl->tstamp.secs;
+ 	else
+ 		ts.tv_sec += ctrl->tstamp.secs;
+-	ktime = timespec_to_ktime(ts);
++	ktime = timespec64_to_ktime(ts);
+ 	zdtc.ts = ts;
+ 	hrtimer_start_range_ns(&zdtc.timer, ktime, ZDTC_SLACK,
+ 			       HRTIMER_MODE_ABS);
+diff --git a/zio/drivers/zio-irq-tdc.c b/zio/drivers/zio-irq-tdc.c
+index bb306ec..4a3219d 100644
+--- a/zio/drivers/zio-irq-tdc.c
++++ b/zio/drivers/zio-irq-tdc.c
+@@ -28,13 +28,13 @@ module_param_named(irq, ztdc_irq, int, 0444);
+ /* The interrupt handler is taking timestamps and filling blocks */
+ irqreturn_t ztdc_handler(int irq, void *dev_id)
+ {
+-	struct timespec ts, *tsp;
++	struct timespec64 ts, *tsp;
+ 	struct zio_device *dev = dev_id;
+ 	struct zio_cset *cset;
+ 	struct zio_channel *chan;
+ 	struct zio_block *block;
+ 
+-	getnstimeofday(&ts);
++	ktime_get_real_ts64(&ts);
+ 
+ 	/*
+ 	 * fill cset 0: several per block. We return the block only when full,
+@@ -140,7 +140,7 @@ static struct zio_cset ztdc_cset[] = {
+ 		.flags =	ZIO_DIR_INPUT | ZIO_CSET_TYPE_TIME |
+ 					ZIO_CSET_SELF_TIMED,
+ 		.n_chan =	1,
+-		.ssize =	sizeof(struct timespec),
++		.ssize =	sizeof(struct timespec64),
+ 	},
+ 	{
+ 		ZIO_SET_OBJ_NAME("ctrl-stamps"),
+diff --git a/zio/drivers/zio-mini.c b/zio/drivers/zio-mini.c
+index 9ac742b..861b2f8 100644
+--- a/zio/drivers/zio-mini.c
++++ b/zio/drivers/zio-mini.c
+@@ -24,7 +24,7 @@ static int zmini_input(struct zio_cset *cset)
+ {
+ 	struct zio_channel *chan;
+ 	struct zio_block *block;
+-	struct timespec *ts;
++	struct timespec64 *ts;
+ 
+ 	/* Return immediately: just fill the blocks */
+ 	chan_for_each(chan, cset) {
+@@ -35,8 +35,8 @@ static int zmini_input(struct zio_cset *cset)
+ 			continue;
+ 		/* we are allowed to return less data than allocated */
+ 		chan->current_ctrl->nsamples = 1;
+-		block->datalen = sizeof(struct timespec);
+-		getnstimeofday(block->data);
++		block->datalen = sizeof(struct timespec64);
++		ktime_get_real_ts64(block->data);
+ 	}
+ 	return 0; /* Already done */
+ }
+@@ -46,7 +46,7 @@ static struct zio_cset zmini_cset[] = {
+ 		.raw_io =	zmini_input,
+ 		.flags =	ZIO_DIR_INPUT,
+ 		.n_chan =	1, /* changed at insmod */
+-		.ssize =	sizeof(struct timespec),
++		.ssize =	sizeof(struct timespec64),
+ 	},
+ };
+ 
+diff --git a/zio/drivers/zio-vmk8055.c b/zio/drivers/zio-vmk8055.c
+index b5ce5d4..93bced6 100644
+--- a/zio/drivers/zio-vmk8055.c
++++ b/zio/drivers/zio-vmk8055.c
+@@ -144,9 +144,9 @@ static void zvmk80xx_start_timer(struct zvmk80xx_cset *zvmk80xx_cset)
+  *
+  * This runs when the timer expires and on raw_io
+  */
+-static void zvmk80xx_send_urb(unsigned long arg)
++static void zvmk80xx_send_urb(struct timer_list *t)
+ {
+-	struct zvmk80xx_cset *zvmk80xx_cset = (void *)arg;
++	struct zvmk80xx_cset *zvmk80xx_cset = from_timer(zvmk80xx_cset, t, timer);
+ 	struct zio_channel *chan;
+ 	uint8_t *data, *buf;
+ 	unsigned int sent, nsample;
+@@ -241,8 +241,7 @@ static int zvmk80xx_init_cset(struct zio_cset *cset)
+ 		return -ENOMEM;
+ 	}
+ 
+-	setup_timer(&zvmk80xx_cset->timer, zvmk80xx_send_urb,
+-		    (unsigned long)zvmk80xx_cset);
++	timer_setup(&zvmk80xx_cset->timer, zvmk80xx_send_urb, 0);
+ 
+ 	switch (cset->index) {
+ 	case 0: /* digital input */
+diff --git a/zio/helpers.c b/zio/helpers.c
+index da843c0..6b6ed73 100644
+--- a/zio/helpers.c
++++ b/zio/helpers.c
+@@ -135,7 +135,7 @@ void zio_arm_trigger(struct zio_ti *ti)
+ 			return;
+ 		}
+ 		ti->flags |= ZIO_TI_ARMED;
+-		getnstimeofday(&ti->tstamp);
++		ktime_get_real_ts64(&ti->tstamp);
+ 		spin_unlock_irqrestore(&ti->cset->lock, flags);
+ 
+ 		if (ti->t_op->arm)
+diff --git a/zio/include/linux/zio-trigger.h b/zio/include/linux/zio-trigger.h
+index 6f62691..2bed10f 100644
+--- a/zio/include/linux/zio-trigger.h
++++ b/zio/include/linux/zio-trigger.h
+@@ -4,6 +4,7 @@
+ 
+ #include <linux/delay.h>
+ #include <linux/zio.h>
++#include <linux/time64.h>
+ #include <linux/zio-buffer.h>
+ 
+ #define ZIO_DEFAULT_TRIGGER "user"
+@@ -36,7 +37,7 @@ struct zio_ti {
+ 	int			nsamples;
+ 	spinlock_t		lock;
+ 	/* This is for software stamping */
+-	struct timespec		tstamp;
++	struct timespec64	tstamp;
+ 	uint64_t tstamp_extra;
+ 
+ 	/* Standard and extended attributes for this object */
+diff --git a/zio/objects.c b/zio/objects.c
+index 6c2d639..b5851a1 100644
+--- a/zio/objects.c
++++ b/zio/objects.c
+@@ -1224,7 +1224,7 @@ static int zobj_unique_name(struct zio_object_list *zobj_list, const char *name)
+ 		return -EINVAL;
+ 	}
+ 	if (strlen(name) > ZIO_OBJ_NAME_LEN)
+-		pr_warning("ZIO: name too long, cut to %d characters\n",
++		pr_warn("ZIO: name too long, cut to %d characters\n",
+ 			ZIO_OBJ_NAME_LEN);
+ 
+ 	pr_debug("%s\n", __func__);
+diff --git a/zio/triggers/zio-trig-hrt.c b/zio/triggers/zio-trig-hrt.c
+index c6a5acf..c80bd46 100644
+--- a/zio/triggers/zio-trig-hrt.c
++++ b/zio/triggers/zio-trig-hrt.c
+@@ -27,7 +27,7 @@
+ struct ztt_instance {
+ 	struct zio_ti		ti;
+ 	struct hrtimer		timer;
+-	struct timespec		ts;
++	struct timespec64	ts;
+ 	uint64_t		scalar;
+ 	uint32_t		scalar_l; /* temporary storage */
+ 	uint32_t		slack;
+@@ -74,7 +74,7 @@ static int ztt_conf_set(struct device *dev, struct zio_attribute *zattr,
+ {
+ 	struct zio_ti *ti = to_zio_ti(dev);
+ 	struct ztt_instance *ztt = to_ztt_instance(ti);
+-	struct timespec now;
++	struct timespec64 now;
+ 	ktime_t ktime;
+ 
+ 	pr_debug("%s:%d\n", __func__, __LINE__);
+@@ -98,12 +98,12 @@ static int ztt_conf_set(struct device *dev, struct zio_attribute *zattr,
+ 		break;
+ 	case ZTT_ATTR_EXP_SEC:
+ 		if (usr_val < 10) {
+-			getnstimeofday(&now);
++			ktime_get_real_ts64(&now);
+ 			usr_val += now.tv_sec;
+ 		}
+ 		ztt->ts.tv_sec = usr_val;
+ 		ztt->scalar = ztt->ts.tv_sec * NSEC_PER_SEC + ztt->ts.tv_nsec;
+-		ktime = timespec_to_ktime(ztt->ts),
++		ktime = timespec64_to_ktime(ztt->ts),
+ 		ztt->flags |= ZTT_FLAGS_PENDING;
+ 		hrtimer_start_range_ns(&ztt->timer, ktime, ztt->slack,
+ 				       HRTIMER_MODE_ABS);
+@@ -119,8 +119,8 @@ static int ztt_conf_set(struct device *dev, struct zio_attribute *zattr,
+ 	case ZTT_ATTR_EXP_SCALAR_H:
+ 		ztt->scalar = (uint64_t)usr_val << 32 | ztt->scalar_l;
+ 		if (!usr_val) {
+-			getnstimeofday(&now);
+-			ztt->scalar += ktime_to_ns(timespec_to_ktime(now));
++			ktime_get_real_ts64(&now);
++			ztt->scalar += ktime_to_ns(timespec64_to_ktime(now));
+ 		}
+ 		ktime = ns_to_ktime(ztt->scalar);
+ 		ztt->flags |= ZTT_FLAGS_PENDING;
+@@ -193,8 +193,8 @@ static int ztt_push_block(struct zio_ti *ti, struct zio_channel *chan,
+ 	 * multi-channel cset, software is responsible for stamp consistency.
+ 	 */
+ 	if (ctrl->tstamp.secs) {
+-		struct timespec ts = {ctrl->tstamp.secs, ctrl->tstamp.ticks};
+-		ktime = timespec_to_ktime(ts);
++		struct timespec64 ts = {ctrl->tstamp.secs, ctrl->tstamp.ticks};
++		ktime = timespec64_to_ktime(ts);
+ 	} else {
+ 		ktime = ns_to_ktime(ctrl->tstamp.ticks);
+ 	}
+diff --git a/zio/triggers/zio-trig-timer.c b/zio/triggers/zio-trig-timer.c
+index 96bb3b1..ebc059b 100644
+--- a/zio/triggers/zio-trig-timer.c
++++ b/zio/triggers/zio-trig-timer.c
+@@ -111,14 +111,13 @@ static struct zio_sysfs_operations ztt_s_ops = {
+ };
+ 
+ /* This runs when the timer expires */
+-static void ztt_fn(unsigned long arg)
++static void ztt_fn(struct timer_list *t)
+ {
+-	struct zio_ti *ti = (void *)arg;
+-	struct ztt_instance *ztt;
++	struct ztt_instance *ztt = from_timer(ztt, t, timer);
++	struct zio_ti *ti = &ztt->ti;
+ 
+ 	zio_arm_trigger(ti);
+ 
+-	ztt = to_ztt_instance(ti);
+ 	if (!ztt->period)
+ 		return; /* one-shot */
+ 
+@@ -159,8 +158,7 @@ static struct zio_ti *ztt_create(struct zio_trigger_type *trig,
+ 	ti->cset = cset;
+ 
+ 	/* Fill own fields */
+-	setup_timer(&ztt->timer, ztt_fn,
+-		    (unsigned long)(&ztt->ti));
++	timer_setup(&ztt->timer, ztt_fn, 0);
+ 	ztt->period = msecs_to_jiffies(ztt_ext_attr[0].value);
+ 	ztt->phase = msecs_to_jiffies(ztt_ext_attr[1].value);
+ 	ztt_start_timer(ztt);
+diff --git a/kernel/ft-time.c b/kernel/ft-time.c
+index ee2dbe9..597320d 100644
+--- a/kernel/ft-time.c
++++ b/kernel/ft-time.c
+@@ -112,12 +112,12 @@ void ft_get_tai_time(struct fmctdc_dev *ft, uint64_t *seconds,
+ 
+ void ft_set_host_time(struct fmctdc_dev *ft)
+ {
+-	struct timespec local_ts;
++	struct timespec64 local_ts;
+ 
+ 	/* can't change time when inputs are enabled */
+ 	ft_enable_acquisition(ft, 0);
+ 
+-	getnstimeofday(&local_ts);
++	ktime_get_real_ts64(&local_ts);
+ 
+ 	ft_writel(ft, local_ts.tv_sec & 0xffffffff, TDC_REG_START_UTC);
+ 	ft_writel(ft, TDC_CTRL_LOAD_UTC, TDC_REG_CTRL);
+diff --git a/tools/Makefile b/tools/Makefile
+index 2cf0cf9..8b34b51 100644
+--- a/tools/Makefile
++++ b/tools/Makefile
+@@ -32,7 +32,9 @@ $(TESTS): $(COMMON_SRCS:.c=.o)
+ clean:
+ 	rm -f $(TESTS) test-common.o
+ 
+-# make nothing for modules_install, but avoid errors
++# make nothing for modules/modules_install, but avoid errors
++modules:
++
+ modules_install:
+ 
+ install:

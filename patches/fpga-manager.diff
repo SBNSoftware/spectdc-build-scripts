@@ -1,0 +1,39 @@
+diff --git a/drivers/fpga/fpga-bridge.c b/drivers/fpga/fpga-bridge.c
+index bf0d55d..c02aab1 100644
+--- a/drivers/fpga/fpga-bridge.c
++++ b/drivers/fpga/fpga-bridge.c
+@@ -493,7 +493,7 @@ static int __init fpga_bridge_dev_init(void)
+ {
+ 	spin_lock_init(&bridge_list_lock);
+ 
+-	fpga_bridge_class = class_create(THIS_MODULE, "fpga_bridge");
++	fpga_bridge_class = class_create("fpga_bridge");
+ 	if (IS_ERR(fpga_bridge_class))
+ 		return PTR_ERR(fpga_bridge_class);
+ 
+diff --git a/drivers/fpga/fpga-mgr.c b/drivers/fpga/fpga-mgr.c
+index d140995..73a9f06 100644
+--- a/drivers/fpga/fpga-mgr.c
++++ b/drivers/fpga/fpga-mgr.c
+@@ -965,7 +965,7 @@ static int __init fpga_mgr_class_init(void)
+ 	if (err)
+ 		return err;
+ 
+-	fpga_mgr_class = class_create(THIS_MODULE, "fpga_manager");
++	fpga_mgr_class = class_create("fpga_manager");
+ 	if (IS_ERR(fpga_mgr_class)) {
+ 		err = PTR_ERR(fpga_mgr_class);
+ 		goto err_class;
+diff --git a/drivers/fpga/fpga-region.c b/drivers/fpga/fpga-region.c
+index 1c2b5fc..710f3c9 100644
+--- a/drivers/fpga/fpga-region.c
++++ b/drivers/fpga/fpga-region.c
+@@ -327,7 +327,7 @@ static void fpga_region_dev_release(struct device *dev)
+  */
+ static int __init fpga_region_init(void)
+ {
+-	fpga_region_class = class_create(THIS_MODULE, "fpga_region");
++	fpga_region_class = class_create("fpga_region");
+ 	if (IS_ERR(fpga_region_class))
+ 		return PTR_ERR(fpga_region_class);
+ 

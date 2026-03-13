@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Build artifacts (generated in build_dir)
+built.*
+deps.ok
+logs/
+tmp/
+
+# Editor
+*.swp
+*.swo
+*~

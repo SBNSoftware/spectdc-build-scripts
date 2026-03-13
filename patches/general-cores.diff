@@ -1,0 +1,129 @@
+diff --git a/software/i2c-ocores/drivers/i2c/busses/i2c-ocores.c b/software/i2c-ocores/drivers/i2c/busses/i2c-ocores.c
+index b7a458d..dc6fc7d 100644
+--- a/software/i2c-ocores/drivers/i2c/busses/i2c-ocores.c
++++ b/software/i2c-ocores/drivers/i2c/busses/i2c-ocores.c
+@@ -41,8 +41,12 @@ struct ocores_i2c {
+ 	unsigned long flags;
+ 	wait_queue_head_t wait;
+ 	struct i2c_adapter adap;
++#if  KERNEL_VERSION(4, 7, 0) <= LINUX_VERSION_CODE
++        struct i2c_mux_core *adap_mux;
++#else
+ 	struct i2c_adapter **adap_mux;
+ 	unsigned int n_adap_mux;
++#endif
+ 	struct i2c_msg *msg;
+ 	int pos;
+ 	int nmsgs;
+@@ -582,10 +586,17 @@ MODULE_DEVICE_TABLE(id_table, ocores_id_table);
+ /**
+  * It selects the I2C bus to use and lock it
+  */
++#if  KERNEL_VERSION(4, 7, 0) <= LINUX_VERSION_CODE
++static int ocores_i2c_mux_select(struct i2c_mux_core *adap_mux,
++				 u32 num)
++{
++	struct ocores_i2c *i2c = adap_mux->priv;
++#else
+ static int ocores_i2c_mux_select(struct i2c_adapter *adap,
+ 				 void *priv, u32 num)
+ {
+ 	struct ocores_i2c *i2c = priv;
++#endif
+ 	u8 mux;
+ 
+ 	mux = oc_getreg(i2c, OCI2C_OHWR_MUX);
+@@ -605,16 +616,25 @@ static int ocores_i2c_mux_select(struct i2c_adapter *adap,
+ /**
+  * It unlocks the bus so that it can be changed.
+  */
++#if  KERNEL_VERSION(4, 7, 0) <= LINUX_VERSION_CODE
++static int ocores_i2c_mux_deselect(struct i2c_mux_core *adap_mux,
++				   u32 num)
++{
++	struct ocores_i2c *i2c = adap_mux->priv;
++        struct device *dev = adap_mux->dev;
++#else
+ static int ocores_i2c_mux_deselect(struct i2c_adapter *adap,
+ 				   void *priv, u32 num)
+ {
+ 	struct ocores_i2c *i2c = priv;
++        struct device *dev = &adap->dev;
++#endif
+ 	u8 mux;
+ 
+ 	/* Unlock bus selection */
+ 	mux = oc_getreg(i2c, OCI2C_OHWR_MUX);
+ 	if (unlikely(!(mux & OCI2C_OHWR_MUX_BUSY)))
+-		dev_err(&adap->dev, "deselect a bus that was not selected\n");
++		dev_err(dev, "deselect a bus that was not selected\n");
+ 	mux &= ~OCI2C_OHWR_MUX_BUSY;
+ 	oc_setreg(i2c, OCI2C_OHWR_MUX, mux);
+ 
+@@ -627,12 +647,40 @@ static int ocores_i2c_mux_deselect(struct i2c_adapter *adap,
+  */
+ static int ocores_i2c_probe_ohwr(struct ocores_i2c *i2c)
+ {
+-	int err, i;
++	int i, err = 0;
++
++#if  KERNEL_VERSION(4, 7, 0) <= LINUX_VERSION_CODE
++	i2c->adap_mux = i2c_mux_alloc(&i2c->adap, i2c->adap.dev.parent,
++				      2, sizeof(i2c), 0,
++				      ocores_i2c_mux_select,
++				      ocores_i2c_mux_deselect);
++	if (!i2c->adap_mux) {
++		err = -ENOMEM;
++		goto err_exit;
++	}
++	i2c->adap_mux->priv = i2c;
++	for (i = 0; i < i2c->adap_mux->max_adapters; ++i) {
++		err = i2c_mux_add_adapter(i2c->adap_mux,
++					  0, i, 0);
++		if (err)
++			goto err_add;
++	}
++
++	return 0;
+ 
++err_add:
++	i2c_mux_del_adapters(i2c->adap_mux);
++err_exit:
++	return err;
++#else /* KERNEL < 4.7 */
+ 	i2c->n_adap_mux = 2;
+ 	i2c->adap_mux = devm_kzalloc(&i2c->adap.dev,
+ 				     sizeof(void *) * i2c->n_adap_mux,
+ 				     GFP_KERNEL);
++	if (!i2c->adap_mux) {
++		err =  -ENOMEM;
++		goto err_exit;
++	}
+ 	for (i = 0; i < i2c->n_adap_mux; ++i) {
+ 		i2c->adap_mux[i] = i2c_add_mux_adapter(&i2c->adap,
+ 						       i2c->adap.dev.parent,
+@@ -652,7 +700,9 @@ static int ocores_i2c_probe_ohwr(struct ocores_i2c *i2c)
+ err_add:
+ 	while (--i >= 0)
+ 		i2c_del_mux_adapter(i2c->adap_mux[i]);
++err_exit:
+ 	return err;
++#endif
+ }
+ 
+ /**
+@@ -660,10 +710,14 @@ err_add:
+  */
+ static void ocores_i2c_remove_ohwr(struct ocores_i2c *i2c)
+ {
++#if  KERNEL_VERSION(4, 7, 0) <= LINUX_VERSION_CODE
++	i2c_mux_del_adapters(i2c->adap_mux);
++#else
+ 	int i;
+ 
+ 	for (i = 0; i < i2c->n_adap_mux; ++i)
+ 		i2c_del_mux_adapter(i2c->adap_mux[i]);
++#endif
+ }
+ 
+ #ifdef CONFIG_OF

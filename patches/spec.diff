@@ -1,0 +1,53 @@
+diff --git a/kernel/spec-pci.c b/kernel/spec-pci.c
+index 91644da..89e7c6d 100644
+--- a/kernel/spec-pci.c
++++ b/kernel/spec-pci.c
+@@ -221,8 +221,13 @@ static int spec_probe(struct pci_dev *pdev,
+ 		 */
+ 		#if KERNEL_VERSION(3, 16, 0) > LINUX_VERSION_CODE
+ 		ret = pci_enable_msi_block(pdev, 1);
+-		#else
++		#elif KERNEL_VERSION(5, 11, 0) > LINUX_VERSION_CODE
+ 		ret = pci_enable_msi_exact(pdev, 1);
++		#else
++		{
++			int r = pci_alloc_irq_vectors(pdev, 1, 1, PCI_IRQ_MSI);
++			ret = (r < 0) ? r : 0;
++		}
+ 		#endif
+ 		if (ret < 0)
+ 			dev_err(&pdev->dev, "%s: enable msi block: error %i\n",
+diff --git a/kernel/spec-fmc.c b/kernel/spec-fmc.c
+index b5da724..3020e96 100644
+--- a/kernel/spec-fmc.c
++++ b/kernel/spec-fmc.c
+@@ -256,23 +256,19 @@ static void spec_shared_irq_free(struct fmc_device *fmc)
+ static int spec_irq_free(struct fmc_device *fmc)
+ {
+ 	struct spec_dev *spec = fmc->carrier_data;
++	bool free_pci_irq;
+ 
+-	/*
+-	 * Lock to serialize request/free and have a consistent status
+-	 * during these operations. And, to avoid to run VIC handler while
+-	 * it is going to desappear
+-	 */
+ 	spin_lock(&spec->irq_lock);
+ 	if (spec->vic)
+ 		spec_vic_irq_free(spec, fmc->irq);
+ 
+-	/*
+-	 * If we were not using the VIC, or we released all the VIC handler,
+-	 * then release the PCI IRQ handler
+-	 */
+ 	if (!spec->vic)
+-		spec_shared_irq_free(fmc);
++		gennum_writel(spec, 0xffff, GNGPIO_INT_MASK_SET);
++	free_pci_irq = !spec->vic;
+ 	spin_unlock(&spec->irq_lock);
++
++	if (free_pci_irq)
++		free_irq(spec->pdev->irq, fmc);
+ 	return 0;
+ }
+ 

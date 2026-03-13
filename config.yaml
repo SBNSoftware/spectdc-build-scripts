@@ -1,0 +1,101 @@
+# config.yaml Configuration for build-spec-tdc.py
+# All paths sUPport {build_dir} interpolation.
+
+build_dir: /home/artdaq/spectdc/BUILD_DIR
+kversion: null                # null = platform.uname().release
+linux_headers: null           # null = /lib/modules/{kversion}/build
+patch_dir: ./patches          # relative to config.yaml location
+
+# Privilege escalation: "sudo", "ksu", or null (disable privileged operations)
+privilege_cmd: ksu
+
+skip:
+  build: false
+  install: false
+  patch: false
+  deps: false
+  clean: false
+
+logging:
+  level: INFO
+  file: null                  # null = {build_dir}/logs/build.log
+  colored: true
+
+# Required system executables
+required_executables:
+  - patch
+  - git
+  - gcc
+  - make
+  - python3
+  - lua-5.1
+
+# Required Python modules
+required_python_modules:
+  - yaml
+
+components:
+  cheby:
+    git_url: https://gitlab.cern.ch/cohtdrivers/cheby.git
+    branch: master
+    commit: 9268f4cfafc69e232d8c133fe3c36dfbc14cd433
+    skip_patch: true
+    depends_on: []
+
+  fpga-manager:
+    git_url: https://gitlab.cern.ch/coht/fpga-manager.git
+    branch: master
+    commit: 5b71636f1f13a915e4aa85b3012298bcf9893abe
+    skip_patch: false
+    depends_on: []
+    exports:
+      CONFIG_FPGA_MGR_BACKPORT: "y"
+      FPGA_MGR: "{build_dir}/fpga-manager"
+
+  general-cores:
+    git_url: https://gitlab.com/ohwr/project/general-cores.git
+    branch: master
+    commit: fa4b1c9572b0deabd8b40e39b13c75f4157de105
+    skip_patch: true
+    depends_on: []
+    exports:
+      I2C: "{build_dir}/general-cores/software/i2c-ocores"
+      SPI: "{build_dir}/general-cores/software/spi-ocores"
+
+  spec:
+    git_url: https://gitlab.com/ohwr/project/spec-sw.git
+    branch: master
+    commit: 481b882167f44a2b33c0399dd261a77b3041b63f
+    skip_patch: false
+    depends_on: [general-cores]
+    exports:
+      I2C: "{build_dir}/general-cores/software/i2c-ocores"
+      SPI: "{build_dir}/general-cores/software/spi-ocores"
+      CHEBY: "python3 {build_dir}/cheby/proto/cheby.py"
+
+  wishbone-gen:
+    git_url: https://gitlab.com/ohwr/project/wishbone-gen.git
+    branch: master
+    commit: d541e354276dc14a7794b6d558da76cce340ae69
+    skip_patch: true
+    depends_on: []
+
+  fmc-tdc:
+    git_url: https://gitlab.com/ohwr/fmc-projects/fmc-tdc/fmc-tdc-sw.git
+    branch: master
+    commit: 736d89710dacd878eeaff657bdae1c1b05bcba33
+    skip_patch: false
+    depends_on: [wishbone-gen]
+    reset_submodules: true
+    exports:
+      FMC_BUS: "{build_dir}/fmc-tdc/fmc-bus"
+      ZIO: "{build_dir}/fmc-tdc/zio"
+
+  zio-tdc:
+    git_url: null
+    branch: null
+    commit: null
+    skip_patch: true    # fmc-tdc.diff already patches the shared zio source tree
+    depends_on: [fmc-tdc]
+    source_override: "{build_dir}/fmc-tdc/zio"
+    reset_working_tree: false  # shared tree with fmc-tdc; resetting would undo fmc-tdc.diff patches

@@ -124,7 +124,19 @@ diff --git a/zio/core.c b/zio/core.c
 index 12fead7..24ec53d 100644
 --- a/zio/core.c
 +++ b/zio/core.c
-@@ -140,12 +140,12 @@ static int __init zio_init(void)
+@@ -58,7 +58,10 @@ EXPORT_SYMBOL(zio_free_control);
+
+ int __init zio_slab_init(void)
+ {
+-	zio_ctrl_slab = KMEM_CACHE(zio_control, 0);
++	zio_ctrl_slab = kmem_cache_create_usercopy("zio_control",
++			sizeof(struct zio_control),
++			__alignof__(struct zio_control),
++			0, 0, sizeof(struct zio_control), NULL);
+ 	if (!zio_ctrl_slab)
+ 		return -ENOMEM;
+ 	return 0;
+@@ -140,12 +143,12 @@ static int __init zio_init(void)
  
  	err = zio_default_buffer_init();
  	if (err)
@@ -447,6 +459,48 @@ index ee2dbe9..597320d 100644
  
  	ft_writel(ft, local_ts.tv_sec & 0xffffffff, TDC_REG_START_UTC);
  	ft_writel(ft, TDC_CTRL_LOAD_UTC, TDC_REG_CTRL);
+diff --git a/lib/fmctdc-lib.c b/lib/fmctdc-lib.c
+index 1234567..abcdef0 100644
+--- a/lib/fmctdc-lib.c
++++ b/lib/fmctdc-lib.c
+@@ -812,5 +812,5 @@ extern int fmctdc_check_wr_mode(struct fmctdc_board *userb)
+
+ 	if (__fmctdc_command(b, FT_CMD_WR_QUERY) == 0)
+ 		return 0;
+-	return -1;
++	return errno;
+ }
+diff --git a/kernel/ft-irq.c b/kernel/ft-irq.c
+index 1234567..abcdef0 100644
+--- a/kernel/ft-irq.c
++++ b/kernel/ft-irq.c
+@@ -249,20 +249,18 @@ static void ft_readout_fifo_one(struct zio_cset *cset)
+ {
+ 	struct ft_hw_timestamp hwts;
+ 	struct ft_wr_timestamp wrts;
+-	int ret, dacapo = 0; 	/* FIXME dacapo flag */
++	int ret, dacapo = 0;	/* FIXME dacapo flag */
+
+ 	ft_timestap_get(cset, &hwts, 0);
+
+ 	ret = process_timestamp(cset, &hwts, &wrts, dacapo);
+ 	if (!ret)
+ 		return; /* Nothing to do, is not the right pulse */
+
+-	if (!(ZIO_TI_ARMED & cset->ti->flags)) {
+-		dev_warn(&cset->head.dev,
+-			 "Time stamp lost, trigger was not armed\n");
+-		return; /* Nothing to do, ZIO was not ready */
+-	}
+-	/* there is an active block, store data there */
+-	ft_read_sw_fifo(cset, &wrts);
++	/* Arm trigger for this entry (mirrors upstream fix 5b5f3bc) */
++	cset->ti->nsamples = 1;
++	zio_arm_trigger(cset->ti);
++	if (cset->chan->active_block)
++		ft_read_sw_fifo(cset, &wrts);
+ 	zio_trigger_data_done(cset);
+ }
 diff --git a/tools/Makefile b/tools/Makefile
 index 2cf0cf9..8b34b51 100644
 --- a/tools/Makefile

@@ -47,6 +47,8 @@ On systems where the kernel enforces module signing, the `certs/signing_key.pem`
 python3 build.py --fresh --create-empty-certs
 ```
 
+Complaints about `lua-5.1` can be resolved by changing `required_executables:lua-5.1` to `required_executables:lua` in `config.yaml`
+
 ---
 
 ## Configuration
@@ -70,7 +72,7 @@ All settings are in `config.yaml` in the repository root. Key settings:
 Clones all upstream sources from scratch, applies patches, builds, and installs:
 
 ```bash
-cd /home/artdaq/spectdc/spectdc-build-scripts
+cd /home/artdaq/spectdc/spectdc-build-scripts # or /home/nfs/... on clk02
 python3 build.py --fresh
 ```
 
@@ -113,6 +115,15 @@ Preview all commands that would be executed without running them:
 ```bash
 python3 build.py --fresh --dry-run
 ```
+
+---
+## Copy Binaries Across
+Currently, the `build.py` script does not copy some of the firmware from `firmware/fmc/` to `/lib/firmware/fmc`. This can be fixed using
+
+```bash
+cp firmware /lib/ -r
+```
+
 
 ---
 
